@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 
 [RequireComponent(typeof(CanvasRenderer))]
@@ -13,6 +13,7 @@ public class UILineConnector : Graphic
     [SerializeField] private Color progressColor = Color.blue;
     [SerializeField] private Color backgroundColor = Color.white;
     [SerializeField] private Vector2 _offset;
+    [SerializeField] private bool reverseProgress = false;
 
     private bool isInteractive = false;
 
@@ -30,17 +31,28 @@ public class UILineConnector : Graphic
         Vector2 start = WorldToLocalCanvasPoint(from) + _offset;
         Vector2 end = WorldToLocalCanvasPoint(to) + _offset;
 
-        Vector2 mid = Vector2.Lerp(start, end, Mathf.Clamp01(progress));
+        float t = Mathf.Clamp01(progress);
         Vector2 dir = (end - start).normalized;
         Vector2 perp = new Vector2(-dir.y, dir.x) * (thickness / 2f);
 
-        Color bgColor = isInteractive ? backgroundColor : new Color(backgroundColor.r, backgroundColor.g, backgroundColor.b, 0.25f);
+        Color bgColor = isInteractive
+            ? backgroundColor
+            : new Color(backgroundColor.r, backgroundColor.g, backgroundColor.b, 0.25f);
 
-        // Segment: progress
-        AddQuad(vh, start, mid, perp, progressColor);
-
-        // Segment: background
-        AddQuad(vh, mid, end, perp, bgColor);
+        if (reverseProgress)
+        {
+            // progress idzie od END → START
+            Vector2 mid = Vector2.Lerp(end, start, t);
+            AddQuad(vh, end, mid, perp, progressColor);
+            AddQuad(vh, mid, start, perp, bgColor);
+        }
+        else
+        {
+            // progress idzie od START → END
+            Vector2 mid = Vector2.Lerp(start, end, t);
+            AddQuad(vh, start, mid, perp, progressColor);
+            AddQuad(vh, mid, end, perp, bgColor);
+        }
     }
 
     private void AddQuad(VertexHelper vh, Vector2 a, Vector2 b, Vector2 perp, Color color)
@@ -78,6 +90,12 @@ public class UILineConnector : Graphic
     public void SetProgress(float value)
     {
         progress = Mathf.Clamp01(value);
+        SetAllDirty();
+    }
+    public void SetReverseProgress(bool reverse)
+    {
+        reverseProgress = reverse;
+        progressColor = Color.red;
         SetAllDirty();
     }
 }

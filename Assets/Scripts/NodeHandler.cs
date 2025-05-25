@@ -6,133 +6,157 @@ using Zenject;
 
 public class NodeHandler : MonoBehaviour
 {
-    [Inject] private NodesController nodesController;
-    [Inject] private ISecurityService securityService;
+    [Inject] private NodesController _nodesController;
+    [Inject] private ISecurityService _securityService;
 
-    [SerializeField] private NodeType Type;
-    [SerializeField] private NodeState State;
-    [SerializeField] private SecurityLevel SecurityLevel;
+    [SerializeField] private NodeType _type;
+    [SerializeField] private NodeState _state;
+    [SerializeField] private SecurityLevel _securityLevel;
 
-    [SerializeField] private Transform lineParent;
+    [SerializeField] private Transform _lineParent;
 
-    [SerializeField] private List<NodeHandler> NextNeighbors = new List<NodeHandler>();
-    [SerializeField] private List<NodeHandler> PreviousNeighbors = new List<NodeHandler>();
+    [SerializeField] private List<NodeHandler> _nextNeighbors = new List<NodeHandler>();
+    public List<NodeHandler> PreviousNeighbors = new List<NodeHandler>();
 
-    public Dictionary<NodeHandler, List<UILineConnector>> Connections = new Dictionary<NodeHandler, List<UILineConnector>>();
+    private Dictionary<NodeHandler, List<UILineConnector>> _connections = new Dictionary<NodeHandler, List<UILineConnector>>();
 
-    private RectTransform rectTransform;
-    private Image image;
-    private Button button;
-    [SerializeField] private bool isInteractable;
+    private RectTransform _rectTransform;
+    private Image _image;
+    private Button _button;
+    [SerializeField] private bool _isInteractable;
 
-    [Header("Capture UI")]
-    [SerializeField] private TMP_Text captureValueText;
+    [Header("Node UI")]
+    [SerializeField] private TMP_Text _captureValueText;
+    [SerializeField] private TMP_Text _securityLevelText;
 
     private void Awake()
     {
-        rectTransform = GetComponent<RectTransform>();
-        image = GetComponent<Image>();
-        button = GetComponent<Button>();
+        _rectTransform = GetComponent<RectTransform>();
+        _image = GetComponent<Image>();
+        _button = GetComponent<Button>();
     }
     private void Start()
     {
-        if (button != null)
-            button.onClick.AddListener(OnNodeClicked);
+        SetupSecurityLevelUI();
 
-        foreach (var neighbor in NextNeighbors)
+        if (_type == NodeType.Registry)
+            _nodesController.InitRegistryNode(this);
+
+        if (_button != null)
+            _button.onClick.AddListener(OnNodeClicked);
+
+        foreach (var neighbor in _nextNeighbors)
         {
             neighbor.PreviousNeighbors.Add(this);
-            RectTransform neighborRect = neighbor.GetComponent<RectTransform>();
 
-            Vector3 fromPos = this.rectTransform.position;
-            Vector3 toPos = neighborRect.position;
-            Vector3 dir = (toPos - fromPos).normalized;
+            Vector3 dir = (neighbor.transform.position - transform.position).normalized;
             Vector2 normal = new Vector2(-dir.y, dir.x);
             float spacing = 20f;
 
-            List<UILineConnector> tempLineList = new List<UILineConnector>();
+            CreateLine(neighbor, normal, spacing);
 
-            //  OUTGOING LINE
-            {
-                GameObject lineGO = new GameObject($"Line_OUT_{name}_to_{neighbor.name}", typeof(RectTransform));
-                lineGO.transform.SetParent(lineParent, false);
+            if (_type == NodeType.Entry)
+                neighbor.SetupInteractable(true);
 
-                var line = lineGO.AddComponent<UILineConnector>();
-                line.SetTargets(this.rectTransform, neighborRect, true);
-                line.SetProgress(0f);
-                line.SetOffset(normal * (spacing * 0.5f));
-
-                tempLineList.Add(line);
-
-                if (Type == NodeType.IOPort)
-                {
-                    neighbor.SetupInteractable(true);
-                }
-            }
-
-            // INCOMING LINE
-            {
-                GameObject lineGO = new GameObject($"Line_IN_{name}_to_{neighbor.name}", typeof(RectTransform));
-                lineGO.transform.SetParent(lineParent, false);
-
-                var line = lineGO.AddComponent<UILineConnector>();
-                line.SetTargets(this.rectTransform, neighborRect, false);
-                line.SetProgress(0f);
-                line.SetOffset(normal * (-spacing * 0.5f));
-
-                tempLineList.Add(line);
-            }
-
-            Connections.Add(neighbor, tempLineList);
-            neighbor.Connections.Add(this, tempLineList);
+            if (!neighbor._connections.ContainsKey(this))
+                neighbor._connections[this] = _connections[neighbor]; // współdzielenie
         }
+    }
+
+    private void CreateLine(NodeHandler neighbor, Vector2 normal, float spacing)
+    {
+        CreateLineInstance($"Line_OUT_{name}_to_{neighbor.name}", true, normal * (spacing * 0.5f), neighbor);
+        CreateLineInstance($"Line_IN_{name}_to_{neighbor.name}", false, normal * (-spacing * 0.5f), neighbor);
+    }
+
+    private void CreateLineInstance(string name, bool outgoing, Vector2 offset, NodeHandler neighbor)
+    {
+        GameObject lineGO = new GameObject(name, typeof(RectTransform));
+        lineGO.transform.SetParent(_lineParent, false);
+
+        var line = lineGO.AddComponent<UILineConnector>();
+        line.SetTargets(_rectTransform, neighbor.GetComponent<RectTransform>(), outgoing);
+        line.SetProgress(0f);
+        line.SetOffset(offset);
+
+        if (!outgoing)
+            line.SetReverseProgress(true);
+
+        if (!_connections.ContainsKey(neighbor)) _connections[neighbor] = new List<UILineConnector>();
+            _connections[neighbor].Add(line);
+    }
+
+    private void SetupSecurityLevelUI()
+    {
+        int securityInt = (int)_securityLevel;
+        _securityLevelText.text = securityInt.ToString();
     }
 
     private void OnNodeClicked()
     {
-        if (isInteractable && State == NodeState.Uncaptured)
+        if (_isInteractable && _state == NodeState.Uncaptured)
         {
-            nodesController.TryCapture(PreviousNeighbors[0], this);
-            captureValueText.transform.parent.gameObject.SetActive(true);
+            _nodesController.TryCapture(PreviousNeighbors[0], this);
+            _captureValueText.transform.parent.gameObject.SetActive(true);
         }
     }
 
-    public void UpdateUI(NodeHandler nodeUI, float progress)
+    public void UpdateUI(NodeHandler nodeUI, float progress, bool enemyCapture)
     {
-        if (Connections.ContainsKey(nodeUI))
+        if (_connections.ContainsKey(nodeUI))
         {
-            Connections[nodeUI][0].SetProgress(progress);
+            if (!enemyCapture)
+                _connections[nodeUI][0].SetProgress(progress);
+            else
+                _connections[nodeUI][1].SetProgress(progress);
 
             int progressInt = (int)(progress * 100);
-            captureValueText.text = $"{progressInt}%";
+            _captureValueText.text = $"{progressInt}%";
         } 
     }
 
     public void OnCaptureCompleted()
     {
-        captureValueText.transform.parent.gameObject.SetActive(false);
+        _captureValueText.transform.parent.gameObject.SetActive(false);
 
-        bool detected = securityService.IsDetected(SecurityLevel);
-        State = !detected ? NodeState.Capturing : NodeState.Alerted;
-        if (detected)
-            Debug.Log("DETECTED!");
+        bool detected = _securityService.IsDetected(_securityLevel);
+        _state = !detected ? NodeState.Capturing : NodeState.Alerted;
 
-        for (int i = 0; i < NextNeighbors.Count; i++)
+        for (int i = 0; i < _nextNeighbors.Count; i++)
         {
-            var neighbor = NextNeighbors[i];
+            var neighbor = _nextNeighbors[i];
 
             neighbor.SetupInteractable(true);
         }
-    } 
+
+        if (detected)
+        {
+            Debug.Log("DETECTED!");
+            _nodesController.Detected();
+        }
+    }
+    public void OnEnemyCaptureCompleted()
+    {
+        for (int i = 0;i < PreviousNeighbors.Count; i++)
+        {
+            var node = PreviousNeighbors[i];
+
+            _nodesController.TryCapture(this, node, true);
+        }
+        if (_type == NodeType.Entry)
+        {
+            Debug.Log("DEFEAT!");
+        }
+    }
 
     private void SetupInteractable(bool interactable)
     {
-        if (Type == NodeType.IOPort)
+        if (_type == NodeType.Entry)
             return;
 
-        isInteractable = interactable;
+        _isInteractable = interactable;
 
-        button.interactable = interactable;
-        image.color = isInteractable ? new Color(1f, 1f, 1f, 1f) : new Color(0.3f, 0.3f, 0.3f, 1f);
+        _button.interactable = interactable;
+        _image.color = _isInteractable ? new Color(1f, 1f, 1f, 1f) : new Color(0.3f, 0.3f, 0.3f, 1f);
     }
 }
