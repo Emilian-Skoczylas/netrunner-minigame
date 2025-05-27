@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -8,10 +9,12 @@ public class NodeHandler : MonoBehaviour
 {
     [Inject] private NodesController _nodesController;
     [Inject] private ISecurityService _securityService;
+    [Inject] private NodeInteractionHandler _nodeInteractionHandler;
 
     [SerializeField] private NodeType _type;
     [SerializeField] private NodeState _state;
     [SerializeField] private SecurityLevel _securityLevel;
+    public SecurityLevel SecurityLevel => _securityLevel;
 
     [SerializeField] private Transform _lineParent;
 
@@ -28,6 +31,7 @@ public class NodeHandler : MonoBehaviour
     [Header("Node UI")]
     [SerializeField] private TMP_Text _captureValueText;
     [SerializeField] private TMP_Text _securityLevelText;
+    [SerializeField] private Image _fortifyProgressImage;
 
     private void Awake()
     {
@@ -39,8 +43,10 @@ public class NodeHandler : MonoBehaviour
     {
         SetupSecurityLevelUI();
 
-        if (_type == NodeType.Registry)
-            _nodesController.InitRegistryNode(this);
+        if (_type == NodeType.Diagnosis)
+            _nodesController.InitDiagnosisNode(this);
+        else if (_type == NodeType.IOPort)
+            SetupInteractable(true);
 
         if (_button != null)
             _button.onClick.AddListener(OnNodeClicked);
@@ -55,7 +61,7 @@ public class NodeHandler : MonoBehaviour
 
             CreateLine(neighbor, normal, spacing);
 
-            if (_type == NodeType.Entry)
+            if (_type == NodeType.IOPort)
                 neighbor.SetupInteractable(true);
 
             if (!neighbor._connections.ContainsKey(this))
@@ -94,10 +100,21 @@ public class NodeHandler : MonoBehaviour
 
     private void OnNodeClicked()
     {
-        if (_isInteractable && _state == NodeState.Uncaptured)
+        if (_isInteractable)
         {
-            _nodesController.TryCapture(PreviousNeighbors[0], this);
-            _captureValueText.transform.parent.gameObject.SetActive(true);
+            _nodeInteractionHandler.ShowUI(_type, _state, this.transform.position, _securityLevel, (result) =>
+            {
+                if (result == NodeInteractionType.Capture)
+                {
+                    _nodesController.TryCapture(PreviousNeighbors[0], this);
+                    _captureValueText.transform.parent.gameObject.SetActive(true);
+                }
+                else
+                {
+                    _nodesController.TryFortify(this);
+                    _fortifyProgressImage.transform.parent.gameObject.SetActive(true);
+                }
+            });
         }
     }
 
@@ -114,13 +131,28 @@ public class NodeHandler : MonoBehaviour
             _captureValueText.text = $"{progressInt}%";
         } 
     }
+    public void UpdateFortifyProgress(float progress)
+    {
+        if (_fortifyProgressImage != null)
+        {
+            _fortifyProgressImage.fillAmount = progress / 1f;
+        }
+    }
 
     public void OnCaptureCompleted()
     {
         _captureValueText.transform.parent.gameObject.SetActive(false);
 
+        bool winCondition = _type == NodeType.Registry;
+
+        if (winCondition)
+        {
+            Debug.Log("WIN");
+            return;
+        }
+
         bool detected = _securityService.IsDetected(_securityLevel);
-        _state = !detected ? NodeState.Capturing : NodeState.Alerted;
+        _state = !detected ? NodeState.Captured : NodeState.Alerted;
 
         for (int i = 0; i < _nextNeighbors.Count; i++)
         {
@@ -143,20 +175,34 @@ public class NodeHandler : MonoBehaviour
 
             _nodesController.TryCapture(this, node, true);
         }
-        if (_type == NodeType.Entry)
+        if (_type == NodeType.IOPort)
         {
             Debug.Log("DEFEAT!");
         }
     }
 
+    public void OnFortifyCompleted()
+    {
+        _fortifyProgressImage.transform.parent.gameObject.SetActive(false);
+        _securityLevel++;
+        SetupSecurityLevelUI();
+
+        bool detected = _securityService.IsDetected(_securityLevel);
+
+        if (detected)
+        {
+            _state = NodeState.Captured;
+            Debug.Log("DETECTED!");
+            _nodesController.Detected();
+        }
+    }
+
     private void SetupInteractable(bool interactable)
     {
-        if (_type == NodeType.Entry)
-            return;
-
         _isInteractable = interactable;
-
         _button.interactable = interactable;
-        _image.color = _isInteractable ? new Color(1f, 1f, 1f, 1f) : new Color(0.3f, 0.3f, 0.3f, 1f);
+
+        if (_type == NodeType.Regular)
+            _image.color = _isInteractable ? new Color(1f, 1f, 1f, 1f) : new Color(0.3f, 0.3f, 0.3f, 1f);
     }
 }

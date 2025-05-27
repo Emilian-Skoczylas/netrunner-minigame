@@ -1,7 +1,8 @@
 public enum NodeType
 {
     Invalid = 0,
-    Entry = 1,
+    IOPort = 1,
     Regular = 2,
-    Registry = 3
+    Registry = 3,
+    Diagnosis = 4
 }

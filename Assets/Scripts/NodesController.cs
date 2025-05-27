@@ -5,9 +5,11 @@ using Zenject;
 
 public class NodesController : ITickable
 {
-    private List<NodeCaptureTask> _activeTasks = new List<NodeCaptureTask>();
+    [Inject] private ISecurityService _securityService;
 
-    private NodeHandler _registryNode;
+    private List<NodeTask> _activeTasks = new List<NodeTask>();
+
+    private NodeHandler _diagnosisNode;
     public bool IsDetected { get; private set; }
 
     public void Tick()
@@ -28,16 +30,19 @@ public class NodesController : ITickable
     
     public void TryCapture(NodeHandler from, NodeHandler toNode, bool enemy = false)
     {
-        if (_activeTasks.Any(t => t.FromNode == from && t.ToNode == toNode && t.EnemyCapture == enemy))
+        float captureDuration = _securityService.GetCaptureDuration(toNode.SecurityLevel);
+
+        var newTask = new NodeCapture(from, toNode, captureDuration, enemy);
+
+        if (_activeTasks.Any(existing => existing.IsSameTask(newTask)))
             return;
 
-        var task = new NodeCaptureTask(from, toNode, 2f, enemy);
-        _activeTasks.Add(task);
+        _activeTasks.Add(newTask);
     }
 
-    public void InitRegistryNode(NodeHandler registryNode)
+    public void InitDiagnosisNode(NodeHandler diagnosisNode)
     {
-        this._registryNode = registryNode;
+        this._diagnosisNode = diagnosisNode;
     }
     public void Detected()
     {
@@ -46,13 +51,24 @@ public class NodesController : ITickable
 
         IsDetected = true;
 
-        if (_registryNode != null)
+        if (_diagnosisNode != null)
         {
-            foreach (var node in _registryNode.PreviousNeighbors)
+            foreach (var node in _diagnosisNode.PreviousNeighbors)
             {
-                var task = new NodeCaptureTask(_registryNode, node, 2f, true);
+                float captureDuration = _securityService.GetCaptureDuration(node.SecurityLevel);
+                var task = new NodeCapture(_diagnosisNode, node, captureDuration, true);
                 _activeTasks.Add(task);
             }
         }
+    }
+
+    public void TryFortify(NodeHandler node)
+    {
+        var newTask = new NodeFortify(node);
+
+        if (_activeTasks.Any(existing => existing.IsSameTask(newTask)))
+            return;
+
+        _activeTasks.Add(newTask);
     }
 }

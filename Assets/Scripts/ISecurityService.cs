@@ -1,5 +1,7 @@
 public interface ISecurityService
 {
-    float GetDetectionChance(SecurityLevel level);
+    float GetCaptureDetectionChance(SecurityLevel level);
+    float GetFortifyDetectionChance(SecurityLevel level);
     bool IsDetected(SecurityLevel level);
+    float GetCaptureDuration(SecurityLevel level);
 }
